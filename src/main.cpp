@@ -1,5 +1,37 @@
+/********************************************************************************
+ * @file    main.cpp
+ * @author  Apaza Adolfo - Llorens Miguel - Pennisi Gianfranco
+ * @title	  Proyecto Final de la carrera Ing. Electrónica
+ * @version V1
+ * @date    20-Abril-2023
+ * @brief
+
+Presenta los siguientes modulos:
+- ESP32 Devkit V1 y ESP32-S NodeMCU - Como microcontrolador
+- Display OLED 128x64 - En el se visualizan los datos adquiridos y los mensajes.
+- ICS43434 I2S Digital Microphone - Sensor que captura la contaminacion acustica.
+
+El modulo ICS43434 se conecto de la siguiente manera (Izq. modulo y der. ESP32 respectivamente):
+GND - GND                  L/N a GND
+SCK - GPIO18               WS - GPIO23
+VCC - 3.3 VCC              SD - GPIO19
+
+El modulo de la pantalla OLED se conecta de la siguiente forma:
+
+GND - GND       VCC - 3.3 V       SCK - GPIO21        SCL - GPIO22       
+Links de interés:
+https://www.tindie.com/products/onehorse/ics43434-i2s-digital-microphone/
+https://hackaday.io/project/166867-esp32-i2s-slm
+https://github.com/ikostoski/esp32-i2s-slm
+
+ *****************************************************************************/
+
 #include <Arduino.h>
 #include <driver/i2s.h>
+#include <SPI.h>
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
 #include "sos-iir-filter.h"
 #include <math.h>
 
@@ -8,7 +40,7 @@
 //
 
 #define LEQ_PERIOD        1           // second(s)
-#define WEIGHTING         C_weighting // Also avaliable: 'C_weighting' or 'None' (Z_weighting)
+#define WEIGHTING         A_weighting // Also avaliable: 'C_weighting' or 'None' (Z_weighting)
 #define LEQ_UNITS         "LAeq"      // customize based on above weighting used
 #define DB_UNITS          "dBA"       // customize based on above weighting used
 //#define USE_DISPLAY       1
@@ -43,6 +75,13 @@
 
 // I2S peripheral to use (0 or 1)
 #define I2S_PORT          I2S_NUM_0
+
+// define the pins used by OLED Display
+#define SCREEN_WIDTH 128 // OLED display width, in pixels
+#define SCREEN_HEIGHT 64 // OLED display height, in pixels
+#define OLED_RESET -1    // Reset pin # (or -1 if sharing Arduino reset pin)
+
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
 //
 // IIR Filters
@@ -200,7 +239,7 @@ void mic_i2s_init() {
     sample_rate: SAMPLE_RATE,
     bits_per_sample: i2s_bits_per_sample_t(SAMPLE_BITS),
     channel_format: I2S_CHANNEL_FMT_ONLY_LEFT,
-    communication_format: i2s_comm_format_t(I2S_COMM_FORMAT_I2S | I2S_COMM_FORMAT_I2S_MSB),
+    communication_format: I2S_COMM_FORMAT_STAND_I2S,
     intr_alloc_flags: ESP_INTR_FLAG_LEVEL1,
     dma_buf_count: DMA_BANKS,
     dma_buf_len: DMA_BANK_SIZE,
@@ -326,6 +365,22 @@ void setup() {
   double Leq_sum_sqr = 0;
   double Leq_dB = 0;
 
+
+  // Inicializacion del display
+  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C))
+  {
+    Serial.println(F("SSD1306 allocation failed"));
+    for (;;)
+      ; // Don't proceed, loop forever
+  }
+  display.clearDisplay();
+  display.setTextColor(WHITE);
+  display.setTextSize(2);
+  display.setCursor(0,20);
+  display.display();
+  delay(2000); // Pause for 2 seconds
+  display.clearDisplay();
+
   // Read sum of samaples, calculated by 'i2s_reader_task'
   while (xQueueReceive(samples_queue, &q, portMAX_DELAY)) {
 
@@ -353,7 +408,11 @@ void setup() {
       
       // Serial output, customize (or remove) as needed
       Serial.printf("%.1f\n", Leq_dB);
-
+      display.clearDisplay();
+      display.setCursor(0,21);
+      display.print(Leq_dB);
+      display.print(" DbA");
+      display.display();
       // Debug only
       //Serial.printf("%u processing ticks\n", q.proc_ticks);
     }
